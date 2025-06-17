@@ -37,8 +37,17 @@ module.exports = (sequelize, DataTypes) => {
     id_bus: DataTypes.INTEGER,
     fecha_salida: DataTypes.DATE,
     hora_salida: DataTypes.TIME,
-    precio_base: DataTypes.DECIMAL,
-    estado: DataTypes.BOOLEAN
+    precio_base: DataTypes.DECIMAL, // This will be the final selling price
+    estado: DataTypes.BOOLEAN,
+    precio_sugerido_ia: { // New field
+      type: DataTypes.DECIMAL(10, 2),
+      allowNull: true
+    },
+    precio_final_fue_ajustado_manual: { // New field
+      type: DataTypes.BOOLEAN,
+      allowNull: false,
+      defaultValue: false
+    }
   }, {
     sequelize,
     modelName: 'HorarioSalida',

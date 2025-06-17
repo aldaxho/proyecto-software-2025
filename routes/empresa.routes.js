@@ -28,6 +28,7 @@ router.delete('/rutas/:id_ruta', verifyToken, checkRole('AdministradorEmpresa'),
 router.post('/horarios', verifyToken, checkRole('AdministradorEmpresa'), horarioController.crearHorario);
 router.get('/horarios', verifyToken, checkRole('AdministradorEmpresa'), horarioController.listarHorariosEmpresa);
 router.put('/horarios/:id_horario', verifyToken, checkRole('AdministradorEmpresa'), horarioController.actualizarHorario);
+router.put('/horarios/:id_horario/ajustar-precio', verifyToken, checkRole('AdministradorEmpresa'), horarioController.ajustarPrecioHorario); // Nueva ruta
 router.delete('/horarios/:id_horario', verifyToken, checkRole('AdministradorEmpresa'), horarioController.desactivarHorario);
 
 // Rutas de Boletos para AdministradorEmpresa
@@ -51,6 +52,8 @@ router.get('/reportes/ventas', verifyToken, checkRole('AdministradorEmpresa'), r
 // Rutas para Configuración IA de Empresa
 router.get('/ia/configuracion', verifyToken, checkRole('AdministradorEmpresa'), iaController.getIaConfiguracionEmpresa);
 router.put('/ia/configuracion', verifyToken, checkRole('AdministradorEmpresa'), iaController.updateIaConfiguracionEmpresa);
+router.get('/ia/historial-precios', verifyToken, checkRole('AdministradorEmpresa'), iaController.getHistorialPreciosIaEmpresa);
+
 
 // Ruta para obtener el perfil de la empresa del usuario logueado (AdministradorEmpresa)
 router.get('/perfil', verifyToken, checkRole('AdministradorEmpresa'), empresaController.getMiEmpresaPerfil);

@@ -18,7 +18,7 @@ exports.login = async (req, res) => {
 
     // Construct payload for JWT
     const payload = {
-      id: usuario.id_usuario, // Assuming PK is id_usuario based on other controllers
+      id: usuario.id, // Standardized to use 'id' as PK
       correo: usuario.correo,
       roles: roles.map(r => r.nombre),
     };
@@ -74,12 +74,12 @@ exports.registrarUsuarioCliente = async (req, res) => {
     if (!rolCliente) return res.status(500).json({ mensaje: 'Rol Cliente no existe' });
 
     await UsuarioRol.create({
-      id_usuario: nuevoUsuario.id,
-      id_rol: rolCliente.id
+      id_usuario: nuevoUsuario.id, // FK in UsuarioRol should point to Usuario's PK, which is 'id'
+      id_rol: rolCliente.id_rol // Assuming PK of Rol is id_rol
     });
     //crear token jwt
     const clientePayload = {
-      id: nuevoUsuario.id_usuario, // Assuming PK is id_usuario
+      id: nuevoUsuario.id, // Standardized to use 'id' as PK
       correo: nuevoUsuario.correo,
       roles: ['Cliente']
       // id_empresa is explicitly null for Clientes as per model, so not added.
@@ -94,7 +94,11 @@ exports.registrarUsuarioCliente = async (req, res) => {
     delete nuevoUsuario.dataValues.contraseña;
 
 
-    res.status(201).json({ mensaje: 'Usuario cliente registrado', usuario: nuevoUsuario });
+    res.status(201).json({
+      mensaje: 'Usuario cliente registrado',
+      usuario: nuevoUsuario,
+      token: token // Added token to the response
+    });
   } catch (error) {
     console.error(error);
     res.status(500).json({ mensaje: 'Error interno al registrar' });

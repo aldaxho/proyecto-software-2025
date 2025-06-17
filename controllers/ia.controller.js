@@ -74,6 +74,79 @@ exports.upsertConfiguracionIa = async (req, res) => {
   }
 };
 
+// Get Price History for AI (for AdministradorEmpresa)
+exports.getHistorialPreciosIaEmpresa = async (req, res) => {
+  try {
+    const id_empresa_admin = req.user && req.user.id_empresa;
+
+    if (!id_empresa_admin) {
+      return res.status(403).json({ message: 'Acceso denegado. No hay empresa asociada a su usuario.' });
+    }
+
+    const { id_ruta, fecha_inicio, fecha_fin } = req.query;
+    const whereClauseHistorial = {}; // For HistorialPrecio model
+
+    // Base include options to filter by company first
+    const includeOptions = [
+      {
+        model: HorarioSalida,
+        as: 'horario',
+        attributes: ['id_horario_salida', 'hora_salida'],
+        required: true, // INNER JOIN to ensure the HorarioSalida exists
+        include: [
+          {
+            model: Ruta,
+            as: 'ruta',
+            attributes: ['id_ruta', 'nombre_ruta', 'origen', 'destino'],
+            where: { id_empresa: id_empresa_admin }, // Filter by the admin's company
+            required: true, // INNER JOIN to ensure the Ruta belongs to the company
+          },
+        ],
+      },
+    ];
+
+    // Further filtering by id_ruta if provided
+    if (id_ruta) {
+      if (isNaN(parseInt(id_ruta, 10))) {
+        return res.status(400).json({ message: 'id_ruta debe ser un número.' });
+      }
+      // Add id_ruta filter to the Ruta include's where clause
+      includeOptions[0].include[0].where.id_ruta = parseInt(id_ruta, 10);
+    }
+
+    // Filtering by date range (applied to HistorialPrecio model's fecha_prediccion field)
+    if (fecha_inicio && fecha_fin) {
+      whereClauseHistorial.fecha_prediccion = {
+        [Op.between]: [new Date(fecha_inicio), new Date(fecha_fin + 'T23:59:59.999Z')],
+      };
+    } else if (fecha_inicio) {
+      whereClauseHistorial.fecha_prediccion = {
+        [Op.gte]: new Date(fecha_inicio),
+      };
+    } else if (fecha_fin) {
+      whereClauseHistorial.fecha_prediccion = {
+        [Op.lte]: new Date(fecha_fin + 'T23:59:59.999Z'),
+      };
+    }
+
+    const historiales = await HistorialPrecio.findAll({
+      attributes: ['id_historial_precio', 'precio_predicho', 'precio_final_usado', 'fecha_prediccion'],
+      include: includeOptions,
+      where: whereClauseHistorial,
+      order: [['fecha_prediccion', 'DESC']],
+    });
+
+    res.status(200).json(historiales);
+
+  } catch (error) {
+    console.error('Error en getHistorialPreciosIaEmpresa:', error);
+    if (error.name === 'SequelizeDatabaseError' && error.original && error.original.code === 'ER_TRUNCATED_WRONG_VALUE') {
+        return res.status(400).json({ message: 'Formato de fecha inválido. Use YYYY-MM-DD.' });
+    }
+    res.status(500).json({ message: 'Error interno del servidor.', error: error.message });
+  }
+};
+
 // --- Funciones para AdministradorEmpresa ---
 
 // Get AI Configuration for the logged-in AdministradorEmpresa

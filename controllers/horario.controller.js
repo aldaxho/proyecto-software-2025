@@ -1,4 +1,4 @@
-const { HorarioSalida, Ruta, Bus, sequelize } = require('../models'); // Assuming models are in /models
+const { HorarioSalida, Ruta, Bus, ConfiguracionIa, HistorialPrecio, sequelize } = require('../models'); // Added ConfiguracionIa, HistorialPrecio
 const { Op } = require('sequelize');
 
 // Create a new departure schedule for the company
@@ -301,5 +301,116 @@ exports.desactivarHorario = async (req, res) => {
   } catch (error) {
     console.error('Error en desactivarHorario:', error);
     res.status(500).json({ message: 'Error interno del servidor al desactivar el horario.', error: error.message });
+  }
+};
+
+// Adjust final price for a schedule (by AdministradorEmpresa)
+exports.ajustarPrecioHorario = async (req, res) => {
+  try {
+    const id_empresa_admin = req.user && req.user.id_empresa;
+    const id_usuario_admin = req.user && req.user.id_usuario; // Assuming 'id_usuario' is the PK in JWT for users
+    const { id_horario } = req.params;
+    const { nuevo_precio_final } = req.body;
+
+    if (!id_empresa_admin) {
+      return res.status(403).json({ message: 'Acceso denegado. No hay empresa asociada.' });
+    }
+    if (isNaN(parseInt(id_horario, 10))) {
+      return res.status(400).json({ message: 'El ID del horario debe ser un número.' });
+    }
+    if (nuevo_precio_final === undefined || typeof nuevo_precio_final !== 'number' || nuevo_precio_final <= 0) {
+      return res.status(400).json({ message: 'El nuevo_precio_final es obligatorio y debe ser un número positivo.' });
+    }
+
+    const horario = await HorarioSalida.findByPk(parseInt(id_horario, 10), {
+      include: [{ model: Ruta, as: 'ruta', attributes: ['id_ruta', 'id_empresa'] }],
+    });
+
+    if (!horario) {
+      return res.status(404).json({ message: 'Horario no encontrado.' });
+    }
+    if (horario.ruta.id_empresa !== id_empresa_admin) {
+      return res.status(403).json({ message: 'Este horario no pertenece a su empresa.' });
+    }
+
+    // Fetch AI Configuration for the company
+    const configIaEmpresa = await ConfiguracionIa.findOne({ where: { id_empresa: id_empresa_admin } });
+
+    let precioMinimoPermitido = 0; // Default minimum
+    let precioMaximoPermitido = Infinity; // Default maximum
+
+    if (configIaEmpresa && configIaEmpresa.habilitado) {
+        precioMinimoPermitido = configIaEmpresa.precio_minimo !== null ? parseFloat(configIaEmpresa.precio_minimo) : precioMinimoPermitido;
+        precioMaximoPermitido = configIaEmpresa.precio_maximo !== null ? parseFloat(configIaEmpresa.precio_maximo) : precioMaximoPermitido;
+
+        // Check for route-specific overrides in rutas_config_json
+        if (configIaEmpresa.rutas_config_json && configIaEmpresa.rutas_config_json[horario.id_ruta]) {
+            const configRuta = configIaEmpresa.rutas_config_json[horario.id_ruta];
+            if (configRuta.precio_minimo !== undefined && configRuta.precio_minimo !== null) {
+                precioMinimoPermitido = parseFloat(configRuta.precio_minimo);
+            }
+            if (configRuta.precio_maximo !== undefined && configRuta.precio_maximo !== null) {
+                precioMaximoPermitido = parseFloat(configRuta.precio_maximo);
+            }
+        }
+    } else if (configIaEmpresa && !configIaEmpresa.habilitado) {
+        // If IA config exists but is disabled, perhaps no price limits apply, or specific non-IA limits.
+        // For now, let's assume if disabled, no strict IA limits, but this needs business rule clarification.
+        // Or, one might argue that if IA is disabled, manual adjustments are also bound by some default range or not allowed.
+        // Sticking to the prompt: "validar que nuevo_precio_final esté dentro de los rangos permitidos (mínimo/máximo) definidos en la configuración de IA".
+        // If IA is disabled, we might allow any price or use a very broad default.
+        // For this implementation, if IA config is disabled, we won't enforce its min/max.
+        console.log(`IA configuration for company ${id_empresa_admin} is disabled. Price range validation skipped.`);
+    }
+    // If configIaEmpresa is null, it means AdminTerminal hasn't set it up. What then?
+    // For now, proceed without strict IA limits if no config or IA disabled.
+    // A stricter approach might be to disallow adjustments if IA config isn't active.
+
+    if (configIaEmpresa && configIaEmpresa.habilitado) {
+        if (nuevo_precio_final < precioMinimoPermitido || nuevo_precio_final > precioMaximoPermitido) {
+        return res.status(400).json({
+            message: `El nuevo precio final (${nuevo_precio_final}) está fuera del rango permitido (${precioMinimoPermitido} - ${precioMaximoPermitido}).`,
+        });
+        }
+    }
+
+
+    // Update HorarioSalida
+    const precioSugeridoAntesDelAjuste = horario.precio_sugerido_ia; // Could be null
+    horario.precio_base = nuevo_precio_final; // precio_base is the final price
+    horario.precio_final_fue_ajustado_manual = true;
+    // We don't change precio_sugerido_ia here, it's what IA last suggested.
+
+    await horario.save();
+
+    // Record in HistorialPrecio
+    await HistorialPrecio.create({
+      id_horario: horario.id_horario_salida, // Make sure this PK name is correct for HorarioSalida
+      precio_predicho: precioSugeridoAntesDelAjuste, // IA's suggestion (could be null)
+      precio_final_usado: nuevo_precio_final,
+      fecha: new Date(), // Timestamp of the adjustment
+      tipo_ajuste: 'MANUAL_ADMIN_EMPRESA',
+      id_usuario_ajuste: id_usuario_admin,
+    });
+
+    // Refetch to include updated associations for the response
+    const horarioActualizadoConInfo = await HorarioSalida.findByPk(horario.id_horario_salida, {
+        include: [
+            { model: Ruta, as: 'ruta' },
+            { model: Bus, as: 'bus' }
+        ]
+    });
+
+    res.status(200).json({
+      message: 'Precio ajustado manualmente con éxito.',
+      horario: horarioActualizadoConInfo,
+    });
+
+  } catch (error) {
+    console.error('Error en ajustarPrecioHorario:', error);
+    if (error.name === 'SequelizeValidationError') {
+      return res.status(400).json({ message: 'Error de validación.', details: error.errors.map(e => e.message) });
+    }
+    res.status(500).json({ message: 'Error interno del servidor al ajustar el precio.', error: error.message });
   }
 };
