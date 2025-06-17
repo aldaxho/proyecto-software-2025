@@ -25,7 +25,11 @@ module.exports = (sequelize, DataTypes) => {
     usar_modelo_bus: DataTypes.BOOLEAN,
     usar_festivos: DataTypes.BOOLEAN,
     usar_datos_climaticos: DataTypes.BOOLEAN,
-    usar_demanda_historial: DataTypes.BOOLEAN
+    usar_demanda_historial: DataTypes.BOOLEAN,
+    rutas_config_json: { // Nuevo campo
+      type: DataTypes.JSON,
+      allowNull: true
+    }
   }, {
     sequelize,
     modelName: 'ConfiguracionIa',

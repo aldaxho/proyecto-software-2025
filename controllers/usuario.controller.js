@@ -18,6 +18,231 @@ exports.getAllUsuarios = async (req, res) => {
   }
 };
 
+// Listar personal de la empresa del AdministradorEmpresa
+exports.listarPersonalEmpresa = async (req, res) => {
+  try {
+    const id_empresa_admin = req.user && req.user.id_empresa;
+
+    if (!id_empresa_admin) {
+      return res.status(403).json({ message: 'Acceso denegado. No hay empresa asociada a su usuario.' });
+    }
+
+    const personal = await Usuario.findAll({
+      where: { id_empresa: id_empresa_admin },
+      attributes: { exclude: ['contraseña'] }, // Excluir contraseña
+      include: [{
+        model: Rol,
+        as: 'roles',
+        attributes: ['id_rol', 'nombre'], // Mostrar roles del personal
+        through: { attributes: [] } // No mostrar info de la tabla de unión
+      }],
+      order: [['apellido', 'ASC'], ['nombre', 'ASC']],
+    });
+
+    res.status(200).json(personal);
+
+  } catch (error) {
+    console.error('Error al listar personal de empresa:', error);
+    res.status(500).json({ message: 'Error interno del servidor al listar el personal.', error: error.message });
+  }
+};
+
+// Actualizar personal de la empresa por AdministradorEmpresa
+exports.updatePersonalEmpresa = async (req, res) => {
+  try {
+    const id_empresa_admin = req.user && req.user.id_empresa;
+    const { id_usuario } = req.params; // ID del usuario a actualizar
+
+    if (!id_empresa_admin) {
+      return res.status(403).json({ message: 'Acceso denegado. No hay empresa asociada a su usuario.' });
+    }
+    if (isNaN(parseInt(id_usuario, 10))) {
+      return res.status(400).json({ message: 'El ID del usuario debe ser un número.' });
+    }
+
+    const usuario = await Usuario.findOne({
+      where: {
+        id_usuario: parseInt(id_usuario, 10),
+        id_empresa: id_empresa_admin, // Asegurar que el usuario pertenece a la empresa del admin
+      },
+    });
+
+    if (!usuario) {
+      return res.status(404).json({ message: 'Personal no encontrado o no pertenece a esta empresa.' });
+    }
+
+    const {
+      nombre,
+      apellido,
+      correo,
+      tipo_documento,
+      numero_documento,
+      fecha_nacimiento,
+      estado, // boolean
+      // No se permite cambiar id_empresa ni roles desde aquí
+    } = req.body;
+
+    // Validaciones
+    if (correo && correo !== usuario.correo) {
+      const existingUserWithNewEmail = await Usuario.findOne({
+        where: {
+          correo,
+          id_usuario: { [Op.ne]: usuario.id_usuario }, // Excluir usuario actual
+        },
+      });
+      if (existingUserWithNewEmail) {
+        return res.status(400).json({ message: 'El nuevo correo electrónico ya está registrado por otro usuario.' });
+      }
+      usuario.correo = correo;
+    }
+
+    // Actualizar campos si se proporcionan
+    if (nombre !== undefined) usuario.nombre = nombre;
+    if (apellido !== undefined) usuario.apellido = apellido;
+    if (tipo_documento !== undefined) usuario.tipo_documento = tipo_documento;
+    if (numero_documento !== undefined) usuario.numero_documento = numero_documento;
+    if (fecha_nacimiento !== undefined) usuario.fecha_nacimiento = fecha_nacimiento;
+    if (estado !== undefined) usuario.estado = estado;
+
+    await usuario.save();
+
+    const usuarioActualizado = await Usuario.findByPk(usuario.id_usuario, {
+        attributes: { exclude: ['contraseña'] },
+        include: [{ model: Rol, as: 'roles', through: { attributes: [] } }]
+    });
+
+
+    res.status(200).json({
+      message: 'Personal actualizado exitosamente.',
+      usuario: usuarioActualizado,
+    });
+
+  } catch (error) {
+    console.error('Error al actualizar personal de empresa:', error);
+    if (error.name && error.name.includes('Sequelize')) {
+      return res.status(400).json({ message: 'Error de validación o datos incorrectos.', details: error.errors ? error.errors.map(e => e.message) : error.message });
+    }
+    res.status(500).json({ message: 'Error interno del servidor al actualizar el personal.', error: error.message });
+  }
+};
+
+// Desactivar personal de la empresa por AdministradorEmpresa
+exports.desactivarPersonalEmpresa = async (req, res) => {
+  try {
+    const id_empresa_admin = req.user && req.user.id_empresa;
+    const { id_usuario } = req.params; // ID del usuario a desactivar
+
+    if (!id_empresa_admin) {
+      return res.status(403).json({ message: 'Acceso denegado. No hay empresa asociada a su usuario.' });
+    }
+    if (isNaN(parseInt(id_usuario, 10))) {
+      return res.status(400).json({ message: 'El ID del usuario debe ser un número.' });
+    }
+
+    const usuario = await Usuario.findOne({
+      where: {
+        id_usuario: parseInt(id_usuario, 10),
+        id_empresa: id_empresa_admin,
+      },
+    });
+
+    if (!usuario) {
+      return res.status(404).json({ message: 'Personal no encontrado o no pertenece a esta empresa.' });
+    }
+
+    // Baja lógica
+    usuario.estado = false;
+    await usuario.save();
+
+    res.status(200).json({ message: 'Personal desactivado exitosamente.' });
+
+  } catch (error) {
+    console.error('Error al desactivar personal de empresa:', error);
+    res.status(500).json({ message: 'Error interno del servidor al desactivar el personal.', error: error.message });
+  }
+};
+
+// Crear nuevo personal (Cajero) por AdministradorEmpresa
+exports.createPersonalEmpresa = async (req, res) => {
+  try {
+    const id_empresa_admin = req.user && req.user.id_empresa;
+
+    if (!id_empresa_admin) {
+      // This should ideally be caught by checkRole middleware
+      return res.status(403).json({ message: 'Acceso denegado. No hay empresa asociada a su usuario.' });
+    }
+
+    const {
+      nombre,
+      apellido,
+      correo,
+      contraseña,
+      tipo_documento,
+      numero_documento,
+      fecha_nacimiento,
+    } = req.body;
+
+    // --- Validaciones ---
+    if (!nombre || !apellido || !correo || !contraseña || !tipo_documento || !numero_documento || !fecha_nacimiento) {
+      return res.status(400).json({ message: 'Todos los campos son obligatorios.' });
+    }
+
+    const existingUser = await Usuario.findOne({ where: { correo } });
+    if (existingUser) {
+      return res.status(400).json({ message: 'El correo electrónico ya está registrado.' });
+    }
+
+    // Buscar el Rol "Cajero"
+    const rolCajero = await Rol.findOne({ where: { nombre: 'Cajero' } });
+    if (!rolCajero) {
+      console.error("El Rol 'Cajero' no se encuentra en la base de datos. Este es un problema de configuración del sistema.");
+      return res.status(500).json({ message: "Error de configuración: Rol 'Cajero' no encontrado." });
+    }
+    // --- Fin Validaciones ---
+
+    const hashedPassword = await bcrypt.hash(contraseña, 10);
+
+    const nuevoUsuarioData = {
+      nombre,
+      apellido,
+      correo,
+      contraseña: hashedPassword,
+      tipo_documento,
+      numero_documento,
+      fecha_nacimiento,
+      id_empresa: id_empresa_admin, // Asignar la empresa del administrador que lo crea
+      estado: true, // Default state
+    };
+
+    const nuevoPersonal = await Usuario.create(nuevoUsuarioData);
+
+    // Asignar el rol "Cajero"
+    await UsuarioRol.create({
+      id_usuario: nuevoPersonal.id_usuario, // Assuming PK of Usuario is id_usuario
+      id_rol: rolCajero.id_rol,       // Assuming PK of Rol is id_rol
+    });
+
+    // Preparar respuesta sin contraseña
+    const usuarioParaRespuesta = { ...nuevoPersonal.toJSON() };
+    delete usuarioParaRespuesta.contraseña;
+    // Añadir el rol a la respuesta para confirmación
+    usuarioParaRespuesta.roles = [{ nombre: rolCajero.nombre, id_rol: rolCajero.id_rol }];
+
+
+    res.status(201).json({
+      message: 'Personal (Cajero) creado exitosamente.',
+      usuario: usuarioParaRespuesta,
+    });
+
+  } catch (error) {
+    console.error('Error al crear personal de empresa:', error);
+    if (error.name && error.name.includes('Sequelize')) {
+      return res.status(400).json({ message: 'Error de validación o datos incorrectos.', details: error.errors ? error.errors.map(e => e.message) : error.message });
+    }
+    res.status(500).json({ message: 'Error interno del servidor al crear el personal.', error: error.message });
+  }
+};
+
 // Remover un rol de un usuario
 exports.removeRolFromUsuario = async (req, res) => {
   try {

@@ -16,12 +16,20 @@ exports.login = async (req, res) => {
 
     const roles = await usuario.getRols(); // Método de relación
 
+    // Construct payload for JWT
+    const payload = {
+      id: usuario.id_usuario, // Assuming PK is id_usuario based on other controllers
+      correo: usuario.correo,
+      roles: roles.map(r => r.nombre),
+    };
+
+    // Conditionally add id_empresa to payload
+    if (usuario.id_empresa !== null && usuario.id_empresa !== undefined) {
+      payload.id_empresa = usuario.id_empresa;
+    }
+
     const token = jwt.sign(
-      {
-        id: usuario.id,
-        correo: usuario.correo,
-        roles: roles.map(r => r.nombre)
-      },
+      payload,
       process.env.JWT_SECRET,
       { expiresIn: process.env.TOKEN_EXPIRES_IN }
     );
@@ -70,12 +78,15 @@ exports.registrarUsuarioCliente = async (req, res) => {
       id_rol: rolCliente.id
     });
     //crear token jwt
+    const clientePayload = {
+      id: nuevoUsuario.id_usuario, // Assuming PK is id_usuario
+      correo: nuevoUsuario.correo,
+      roles: ['Cliente']
+      // id_empresa is explicitly null for Clientes as per model, so not added.
+    };
+
     const token = jwt.sign(
-      {
-        id: nuevoUsuario.id,
-        correo: nuevoUsuario.correo,
-        roles:['Cliente']
-      },
+      clientePayload,
       process.env.JWT_SECRET,
       {expiresIn: process.env.TOKEN_EXPIRES_IN}
     );
