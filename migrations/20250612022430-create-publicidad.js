@@ -30,6 +30,11 @@ module.exports = {
       costo: {
         type: Sequelize.DECIMAL
       },
+      estado_aprobacion: { // Nuevo campo
+        type: DataTypes.ENUM('PENDIENTE', 'APROBADO', 'RECHAZADO'),
+        defaultValue: 'PENDIENTE',
+        allowNull: false
+      },
       createdAt: {
         allowNull: false,
         type: Sequelize.DATE
