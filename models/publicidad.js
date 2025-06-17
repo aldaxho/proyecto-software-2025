@@ -24,7 +24,12 @@ module.exports = (sequelize, DataTypes) => {
     fecha_inicio: DataTypes.DATE,
     fecha_fin: DataTypes.DATE,
     imagen_url: DataTypes.STRING,
-    costo: DataTypes.DECIMAL
+    costo: DataTypes.DECIMAL,
+    estado_aprobacion: { // Nuevo campo
+      type: DataTypes.ENUM('PENDIENTE', 'APROBADO', 'RECHAZADO'),
+      defaultValue: 'PENDIENTE',
+      allowNull: false
+    }
   }, {
     sequelize,
     modelName: 'Publicidad',

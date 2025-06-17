@@ -9,6 +9,8 @@ const reportesController = require('../controllers/reportes.controller'); // Imp
 const terminalController = require('../controllers/terminal.controller'); // Importar terminalController
 const iaController = require('../controllers/ia.controller'); // Importar iaController
 const logsController = require('../controllers/logs.controller'); // Importar logsController
+const publicidadController = require('../controllers/publicidad.controller'); // Importar publicidadController
+const verificacionController = require('../controllers/verificacion.controller'); // Importar verificacionController
 
 // Solo para AdministradorTerminal
 router.get('/panel', verifyToken, checkRole('AdministradorTerminal'), (req, res) => {
@@ -42,6 +44,13 @@ router.get('/ia/historial-precios', verifyToken, checkRole('AdministradorTermina
 
 // Rutas para Logs (AdministradorTerminal)
 router.get('/logs/accesos', verifyToken, checkRole('AdministradorTerminal'), logsController.getLogAccesos);
+
+// Rutas para Publicidad (AdministradorTerminal)
+router.put('/publicidad/:id/estado', verifyToken, checkRole('AdministradorTerminal'), publicidadController.updateEstadoPublicidad);
+router.get('/publicidad', verifyToken, checkRole('AdministradorTerminal'), publicidadController.getAllPublicidades);
+
+// Rutas para Verificaciones (AdministradorTerminal)
+router.get('/verificaciones/documentos-validados', verifyToken, checkRole('AdministradorTerminal'), verificacionController.getDocumentosValidadosIA);
 
 // Solo para Cajero y AdministradorEmpresa
 router.get('/ventas', verifyToken, checkRole('Cajero', 'AdministradorEmpresa'), (req, res) => {
